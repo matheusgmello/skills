@@ -26,9 +26,12 @@ npx skills add matheusgmello/skills --skill <skill-name>
 |---|---|
 | [marclou-review](skills/marclou-review/SKILL.md) | Reviews a landing page / product page / marketing copy against Marc Lou's 31 rules for viral products. |
 | [grill-while-coding](skills/grill-while-coding/SKILL.md) | Pauses mid-implementation to question business-rule or architectural decisions as they're written, keeping the user aligned with the code. |
+| [write-a-skill](skills/write-a-skill/SKILL.md) | Creates new agent skills with proper structure, progressive disclosure, and bundled resources. |
 
 ## Attribution
 
 `marclou-review` is not original work — it packages the 31 rules from Marc Lou's newsletter as an agent-checkable rubric. Full credit and original writeup: [31 Principles of a Viral Product](https://newsletter.marclou.com/p/31-principles-of-a-viral-product).
 
 `grill-while-coding` is an adaptation of Matt Pocock's `grill-me` skill — same interrogation idea, moved from pre-plan interview to inline checks during implementation. Full credit: [mattpocock/skills](https://github.com/mattpocock/skills).
+
+`write-a-skill` is not original work — it's Matt Pocock's skill, unmodified. Full credit: [mattpocock/skills](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md).
