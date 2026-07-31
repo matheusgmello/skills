@@ -28,6 +28,7 @@ npx skills add matheusgmello/skills --skill <skill-name>
 | [grill-while-coding](skills/grill-while-coding/SKILL.md) | Pauses mid-implementation to question business-rule or architectural decisions as they're written, keeping the user aligned with the code. |
 | [write-a-skill](skills/write-a-skill/SKILL.md) | Creates new agent skills with proper structure, progressive disclosure, and bundled resources. |
 | [pentest-me](skills/pentest-me/SKILL.md) | Attacks your own system as a red team before it ships and scores each attack by how many independent layers stop it (defense in depth), then writes fix reports. |
+| [quality-gate](skills/quality-gate/SKILL.md) | Sets up a ratchet quality gate — a PR may add code but never regress a metric (coverage, duplication, lint, large files, vulns) — plus an AI babysitting loop that drives the PR to green. |
 
 ## Attribution
 
@@ -38,3 +39,5 @@ npx skills add matheusgmello/skills --skill <skill-name>
 `write-a-skill` is not original work — it's Matt Pocock's skill, unmodified. Full credit: [mattpocock/skills](https://github.com/mattpocock/skills/blob/main/skills/productivity/write-a-skill/SKILL.md).
 
 `pentest-me` is original work — a defense-in-depth pentest method that scores attacks by layer depth rather than running a checklist scanner.
+
+`quality-gate` implements the ratchet quality-gate and AI-babysitting method from Lucas Montano's video [Como garantir qualidade de código com IA](https://youtu.be/qToBgU8K4Ms). The concept (baseline + no-regression ratchet + babysitting) is his; the packaged script, per-stack recipes, and CI workflow are this repo's implementation.
