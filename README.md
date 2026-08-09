@@ -29,6 +29,7 @@ npx skills add matheusgmello/skills --skill <skill-name>
 | [write-a-skill](skills/write-a-skill/SKILL.md) | Creates new agent skills with proper structure, progressive disclosure, and bundled resources. |
 | [pentest-me](skills/pentest-me/SKILL.md) | Attacks your own system as a red team before it ships and scores each attack by how many independent layers stop it (defense in depth), then writes fix reports. |
 | [quality-gate](skills/quality-gate/SKILL.md) | Sets up a ratchet quality gate — a PR may add code but never regress a metric (coverage, duplication, lint, large files, vulns) — plus an AI babysitting loop that drives the PR to green. |
+| [brag-me](skills/brag-me/SKILL.md) | Turns your real contributions to a project into evidence-backed resume bullets, pulled from git history, merged PRs, and quality-gate metric trends. |
 
 ## Attribution
 
@@ -41,3 +42,5 @@ npx skills add matheusgmello/skills --skill <skill-name>
 `pentest-me` is original work — a defense-in-depth pentest method that scores attacks by layer depth rather than running a checklist scanner.
 
 `quality-gate` implements the ratchet quality-gate and AI-babysitting method from Lucas Montano's video [Como garantir qualidade de código com IA](https://youtu.be/qToBgU8K4Ms). The concept (baseline + no-regression ratchet + babysitting) is his; the packaged script, per-stack recipes, and CI workflow are this repo's implementation.
+
+`brag-me` is original work — the automation is this repo's. The underlying "brag document" idea is Julia Evans' ([jvns.ca/blog/brag-documents](https://jvns.ca/blog/brag-documents/)).
