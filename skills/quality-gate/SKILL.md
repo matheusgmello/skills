@@ -28,6 +28,7 @@ Script + config: [scripts/quality-gate.mjs](scripts/quality-gate.mjs). Recipes, 
 | Large files (over line limit) | count rises | yes |
 | Cyclomatic complexity (functions over limit) | count rises | yes |
 | Circular dependencies | count rises | yes |
+| Mutation score (killed mutants %) | drops | yes |
 | Vulnerabilities (`npm audit`) | any `critical` | critical blocks, high warns |
 
 A metric with no report is recorded as `null` — it never counts as an improvement, so you cannot game the ratchet by hiding a signal.
@@ -39,3 +40,5 @@ After opening a PR, the agent drives it to green instead of waiting on a human: 
 ## Setup
 
 Copy [scripts/qualitygate.config.example.json](scripts/qualitygate.config.example.json) to `qualitygate.config.json`, point `reports.*` at the files your stack already produces (jest/jacoco coverage, eslint/checkstyle, npm audit), set `maxFileLines`, and turn metrics on/off in `metrics`. Per-stack collection commands are in [REFERENCE.md](REFERENCE.md).
+
+**Lite vs full.** Same engine, different `metrics` list — no second script. Start with the five fundamentals in [scripts/qualitygate.lite.config.example.json](scripts/qualitygate.lite.config.example.json) (coverage, duplication, lint, large files, audit); add `complexity`, `dependencies`, and `mutation` when the project is ready. Mutation is **slow** (reruns the suite per mutant) and only meaningful once the test suite is solid — add it last.

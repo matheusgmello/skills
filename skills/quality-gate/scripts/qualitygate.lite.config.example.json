@@ -1,15 +1,13 @@
 {
   "root": ".",
   "maxFileLines": 300,
-  "complexityRule": "complexity",
-  "metrics": ["coverage", "duplication", "lint", "largeFiles", "complexity", "dependencies", "mutation", "security"],
+  "metrics": ["coverage", "duplication", "lint", "largeFiles", "security"],
   "includeExt": [".js", ".jsx", ".ts", ".tsx", ".java", ".py", ".rb"],
   "exclude": ["node_modules", ".git", "dist", "build", "target", "coverage"],
   "reports": {
     "coverage": "coverage/coverage-summary.json",
     "lint": "reports/eslint.json",
-    "audit": "reports/npm-audit.json",
-    "mutation": "reports/mutation/mutation.json"
+    "audit": "reports/npm-audit.json"
   },
   "summaryFile": "quality-gate-summary.md"
 }

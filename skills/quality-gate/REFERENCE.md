@@ -18,22 +18,27 @@ The ratchet method is stack-agnostic — the comparator only reads numbers. What
     "largeFiles": 19,
     "complexity": 12,
     "dependencies": 3,
+    "mutation": 60,
     "security": { "critical": 0, "high": 0 }
   }
 }
 ```
 
-Directions are fixed in the script, not the file: `coverage` higher-is-better; `duplication`, `lint`, `largeFiles`, `complexity`, `dependencies` lower-is-better; `security.critical` blocks, `security.high` warns. `complexity` is the count of functions over the cyclomatic limit; `dependencies` is the count of circular dependency cycles. A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
+Directions are fixed in the script, not the file: `coverage` and `mutation` higher-is-better; `duplication`, `lint`, `largeFiles`, `complexity`, `dependencies` lower-is-better; `security.critical` blocks, `security.high` warns. `complexity` is the count of functions over the cyclomatic limit; `dependencies` is the count of circular dependency cycles; `mutation` is the mutation score % (killed / valid mutants). A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
+
+**Lite vs full.** The engine is one script; the `metrics` list decides what runs. `qualitygate.lite.config.example.json` enables the five fundamentals (coverage, duplication, lint, largeFiles, security). Add `complexity`, `dependencies`, `mutation` as the project matures — mutation last (it's slow and only meaningful with a solid suite).
 
 ---
 
 ## 2. Collection per stack
 
-The script collects `duplication` (jscpd), `largeFiles` (line count), and `dependencies` (madge) itself. For `coverage`, `lint`, `complexity`, and `security` it reads a report file whose path you set in `reports.*`. Generate those reports before running `collect`.
+The script collects `duplication` (jscpd), `largeFiles` (line count), and `dependencies` (madge) itself. For `coverage`, `lint`, `complexity`, `mutation`, and `security` it reads a report file whose path you set in `reports.*`. Generate those reports before running `collect`.
 
 `complexity` reuses the **lint report** — turn the cyclomatic rule on so violations land there. In eslint: `"complexity": ["warn", 10]` in your config (the script counts messages whose `ruleId` matches `complexityRule`, default `"complexity"`). In checkstyle: the `CyclomaticComplexity` module (the script counts `<error>` whose `source` mentions `Cyclomatic`).
 
 `dependencies` runs `npx madge --circular --json <root>` and counts the cycles — JS/TS only; it degrades to `null` elsewhere.
+
+`mutation` reads a mutation-testing report set in `reports.mutation`: a stryker `.json` (score = killed+timeout / killed+timeout+survived+nocoverage) or a pitest `.xml` (score = detected / total). **Run it in its own slow CI job**, not on every push — mutation reruns the suite once per mutant. Add it only when the suite is strong; a high score over weak tests is noise.
 
 ### Node
 
@@ -50,6 +55,9 @@ npx eslint . -f json -o reports/eslint.json || true   # || true: don't abort col
 npm audit --json > reports/npm-audit.json || true
 
 # dependencies: collected automatically via `npx madge --circular` — no report file needed
+
+# mutation (slow — own job) → reports/mutation/mutation.json  (reports.mutation)
+npx stryker run   # configure stryker's json reporter to reports/mutation/mutation.json
 ```
 
 ### Java / Maven
@@ -61,9 +69,12 @@ mvn -B test jacoco:report
 # lint (+ complexity) → checkstyle XML  (reports.lint: "target/checkstyle-result.xml")
 # enable the CyclomaticComplexity module in checkstyle.xml so complexity is counted
 mvn -B checkstyle:checkstyle
+
+# mutation (slow — own job) → target/pit-reports/mutations.xml  (reports.mutation)
+mvn -B org.pitest:pitest-maven:mutationCoverage -Dpit.reportFormats=XML
 ```
 
-Point `reports.coverage` at a `.json` (jest summary) or `.csv` (jacoco); `reports.lint` at `.json` (eslint) or `.xml` (checkstyle). The script auto-detects by extension. `security` is npm-audit-only; drop `"security"` from `metrics` on non-Node projects.
+Point `reports.coverage` at a `.json` (jest summary) or `.csv` (jacoco); `reports.lint` at `.json` (eslint) or `.xml` (checkstyle); `reports.mutation` at a stryker `.json` or pitest `.xml`. The script auto-detects by extension. `security` is npm-audit-only; drop `"security"` from `metrics` on non-Node projects.
 
 ### Other stacks (Python/Ruby/…)
 
@@ -151,4 +162,4 @@ node quality-gate.mjs --selftest
 node quality-gate.mjs check --config=path/to/qualitygate.config.json
 ```
 
-`check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.
+`check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit,mutation}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.

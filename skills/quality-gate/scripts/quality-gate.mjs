@@ -25,6 +25,7 @@ const DIRECTION = {
   largeFiles: "lower_is_better",
   complexity: "lower_is_better",   // functions over the cyclomatic limit
   dependencies: "lower_is_better", // circular dependency count
+  mutation: "higher_is_better",    // mutation score % (killed mutants)
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -158,6 +159,35 @@ function collectDependencies(cfg) {
   }
 }
 
+// mutation: mutation score % from a stryker json or pitest xml report. Pure
+// helpers so --selftest can exercise them. Score = detected / valid * 100.
+export function mutationScoreStryker(report) {
+  let detected = 0, valid = 0;
+  for (const f of Object.values(report.files || {})) {
+    for (const m of f.mutants || []) {
+      if (m.status === "Killed" || m.status === "Timeout") { detected++; valid++; }
+      else if (m.status === "Survived" || m.status === "NoCoverage") { valid++; }
+      // Ignored / CompileError / RuntimeError are excluded from the denominator
+    }
+  }
+  return valid ? round((detected / valid) * 100) : null;
+}
+
+export function mutationScorePitest(xml) {
+  const tags = xml.match(/<mutation\b[^>]*>/g) || [];
+  if (!tags.length) return null;
+  const detected = tags.filter((t) => /detected=['"]true['"]/.test(t)).length;
+  return round((detected / tags.length) * 100);
+}
+
+function collectMutation(cfg) {
+  const p = cfg.reports?.mutation;
+  if (!p || !existsSync(p)) return null;
+  if (p.endsWith(".json")) return mutationScoreStryker(readJSON(p));
+  if (p.endsWith(".xml")) return mutationScorePitest(readFileSync(p, "utf8"));
+  return null;
+}
+
 // security: npm audit --json → vulnerability counts by severity.
 function collectSecurity(cfg) {
   const p = cfg.reports?.audit;
@@ -176,6 +206,7 @@ function collect(cfg) {
   if (active.includes("largeFiles")) metrics.largeFiles = countLargeFiles(cfg);
   if (active.includes("complexity")) metrics.complexity = collectComplexity(cfg);
   if (active.includes("dependencies")) metrics.dependencies = collectDependencies(cfg);
+  if (active.includes("mutation")) metrics.mutation = collectMutation(cfg);
   if (active.includes("security")) metrics.security = collectSecurity(cfg);
   return { generatedAt: new Date().toISOString(), maxFileLines: cfg.maxFileLines || 300, metrics };
 }
@@ -300,6 +331,17 @@ function selftest() {
     { messages: [{ ruleId: "complexity" }] },
   ]);
   assert(countComplexity(eslintJson, ".json", "complexity") === 3, "must count only complexity-rule messages");
+
+  // (h) mutation score drops → regression (higher_is_better)
+  const mbase = { metrics: { ...base.metrics, mutation: 60 } };
+  r = compare(mbase, { metrics: { ...mbase.metrics, mutation: 55 } });
+  assert(r.regressions.some((x) => x.key === "mutation"), "mutation score drop must regress");
+
+  // (i) mutation parsing: stryker (2 killed, 1 survived → 66.67) and pitest
+  const stryker = { files: { "a.ts": { mutants: [{ status: "Killed" }, { status: "Killed" }, { status: "Survived" }] } } };
+  assert(mutationScoreStryker(stryker) === 66.67, "stryker score = detected/valid*100");
+  const pit = `<mutations><mutation detected='true' status='KILLED'/><mutation detected='false' status='SURVIVED'/></mutations>`;
+  assert(mutationScorePitest(pit) === 50, "pitest score = detected/total*100");
 
   console.log("selftest OK");
 }
