@@ -33,6 +33,8 @@ Script + config: [scripts/quality-gate.mjs](scripts/quality-gate.mjs). Recipes, 
 
 A metric with no report is recorded as `null` — it never counts as an improvement, so you cannot game the ratchet by hiding a signal.
 
+E2E and regression tests aren't metrics — they pass or fail. They run as separate required CI jobs, not in the baseline; see [REFERENCE.md](REFERENCE.md) §3b.
+
 ## Babysitting
 
 After opening a PR, the agent drives it to green instead of waiting on a human: watch CI, read reviewer/gate comments, apply the fix, push, resolve the threads, repeat until the gate passes and checks are green. It never edits `baseline.json` to pass and never force-merges. Full `gh` playbook in [REFERENCE.md](REFERENCE.md).

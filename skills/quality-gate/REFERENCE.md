@@ -125,6 +125,39 @@ jobs:
 
 ---
 
+## 3b. Pass/fail checks — e2e & regression (not ratcheted)
+
+E2E and regression tests are **not metrics** — they're binary: the suite passes or it fails. There's no number to ratchet, and none is needed, because a failing suite already blocks the PR on its own. So they live as **separate CI jobs**, not in `baseline.json`. Add each to the branch's required status checks alongside `quality-gate`.
+
+Why keep them out of the gate: the ratchet answers "did a metric get worse?"; a test suite answers "did behavior break?". Forcing e2e into a number (e.g. "count of passing e2e tests must not drop") is worse than a plain pass/fail — deleting a flaky test would "improve" the number while removing coverage.
+
+```yaml
+  # regression — the existing test suite; a broken behavior = a failing test
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm test              # Node: jest/vitest.  Java: mvn -B test
+
+  # e2e — real user flows against a running app
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: npx playwright test     # or cypress; Java: REST-assured / testcontainers
+```
+
+Visual-regression (screenshot diffing via Playwright snapshots or Percy) is the same shape — a pass/fail job, not a gate metric. Keep e2e off the fast PR path if it's slow; run it as its own required job so a red run still blocks merge.
+
+---
+
 ## 4. Babysitting playbook
 
 After opening the PR, drive it to green — this is the "babysitting" half. Loop until CI is green and the gate passes:
