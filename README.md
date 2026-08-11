@@ -32,6 +32,17 @@ npx skills add matheusgmello/skills --skill <skill-name>
 | [quality-gate-lite](skills/quality-gate-lite/SKILL.md) | The five-metric starter version of the ratchet gate (coverage, duplication, lint, large files, vulns) for projects that don't want the heavier metrics. |
 | [brag-me](skills/brag-me/SKILL.md) | Turns your real contributions to a project into evidence-backed resume bullets, pulled from git history, merged PRs, and quality-gate metric trends. |
 
+## Quality gate — metric waves
+
+The `quality-gate` ratchet grew in waves; a project can adopt them in order as it matures. Same engine throughout — each wave is just more entries in the config's `metrics` list.
+
+| Stage | Metrics | Notes |
+|---|---|---|
+| Base (`quality-gate-lite`) | coverage, duplication, lint, large files, vulnerabilities | The five fundamentals; installable on its own. |
+| Wave 1 | cyclomatic complexity, circular dependencies | Cheap, high signal; complexity reuses the lint report, dependencies via `madge`. |
+| Wave 2 | mutation score | Slow (reruns the suite per mutant) — add last, once the test suite is solid. |
+| Pass/fail (not ratcheted) | e2e, regression | Binary suites, run as separate required CI jobs — not `baseline.json` metrics. See [REFERENCE §3b](skills/quality-gate/REFERENCE.md). |
+
 ## Attribution
 
 `marclou-review` is not original work — it packages the 31 rules from Marc Lou's newsletter as an agent-checkable rubric. Full credit and original writeup: [31 Principles of a Viral Product](https://newsletter.marclou.com/p/31-principles-of-a-viral-product).
