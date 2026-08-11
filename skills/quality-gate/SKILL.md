@@ -18,7 +18,7 @@ Script + config: [scripts/quality-gate.mjs](scripts/quality-gate.mjs). Recipes, 
 
 ## The golden rule (ratchet)
 
-**A PR can add code, but it can never make a metric worse — no exception, no justification.** A metric may only hold or improve. The gate tracks five, each with a fixed direction:
+**A PR can add code, but it can never make a metric worse — no exception, no justification.** A metric may only hold or improve. The gate tracks these, each with a fixed direction:
 
 | Metric | Regresses when | Blocks merge? |
 |---|---|---|
@@ -26,6 +26,8 @@ Script + config: [scripts/quality-gate.mjs](scripts/quality-gate.mjs). Recipes, 
 | Duplication (jscpd) | rises | yes |
 | Lint violations | rises | yes |
 | Large files (over line limit) | count rises | yes |
+| Cyclomatic complexity (functions over limit) | count rises | yes |
+| Circular dependencies | count rises | yes |
 | Vulnerabilities (`npm audit`) | any `critical` | critical blocks, high warns |
 
 A metric with no report is recorded as `null` — it never counts as an improvement, so you cannot game the ratchet by hiding a signal.

@@ -23,6 +23,8 @@ const DIRECTION = {
   duplication: "lower_is_better",
   lint: "lower_is_better",
   largeFiles: "lower_is_better",
+  complexity: "lower_is_better",   // functions over the cyclomatic limit
+  dependencies: "lower_is_better", // circular dependency count
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -119,6 +121,43 @@ function collectLint(cfg) {
   return null;
 }
 
+// complexity: count violations of the cyclomatic-complexity rule in the lint report.
+// Pure so --selftest can exercise it. eslint json: messages with ruleId === rule.
+// checkstyle xml: <error> whose source mentions "Cyclomatic".
+export function countComplexity(raw, ext, rule = "complexity") {
+  if (ext === ".json") {
+    const results = JSON.parse(raw);
+    return results.reduce(
+      (n, f) => n + (f.messages?.filter((m) => m.ruleId === rule).length || 0),
+      0,
+    );
+  }
+  if (ext === ".xml") {
+    return (raw.match(/<error\b[^>]*\bsource="[^"]*Cyclomatic[^"]*"/g) || []).length;
+  }
+  return null;
+}
+
+function collectComplexity(cfg) {
+  const p = cfg.reports?.lint; // reuse the lint report (eslint `complexity` / checkstyle CyclomaticComplexity)
+  if (!p || !existsSync(p)) return null;
+  const ext = p.endsWith(".json") ? ".json" : p.endsWith(".xml") ? ".xml" : null;
+  if (!ext) return null;
+  return countComplexity(readFileSync(p, "utf8"), ext, cfg.complexityRule || "complexity");
+}
+
+// dependencies: number of circular dependency cycles, via madge (JS/TS).
+function collectDependencies(cfg) {
+  const root = cfg.root || ".";
+  try {
+    const out = execFileSync("npx", ["--yes", "madge", "--circular", "--json", root], { encoding: "utf8" });
+    const cycles = JSON.parse(out);
+    return Array.isArray(cycles) ? cycles.length : Object.keys(cycles).length;
+  } catch {
+    return null; // madge unavailable / non-JS project → absent, never faked
+  }
+}
+
 // security: npm audit --json → vulnerability counts by severity.
 function collectSecurity(cfg) {
   const p = cfg.reports?.audit;
@@ -135,6 +174,8 @@ function collect(cfg) {
   if (active.includes("duplication")) metrics.duplication = collectDuplication(cfg);
   if (active.includes("lint")) metrics.lint = collectLint(cfg);
   if (active.includes("largeFiles")) metrics.largeFiles = countLargeFiles(cfg);
+  if (active.includes("complexity")) metrics.complexity = collectComplexity(cfg);
+  if (active.includes("dependencies")) metrics.dependencies = collectDependencies(cfg);
   if (active.includes("security")) metrics.security = collectSecurity(cfg);
   return { generatedAt: new Date().toISOString(), maxFileLines: cfg.maxFileLines || 300, metrics };
 }
@@ -223,7 +264,7 @@ function cmdUpdate(cfg, baselinePath = "baseline.json", metricsPath = "metrics.j
 // --- selftest ----------------------------------------------------------------
 function selftest() {
   const assert = (cond, msg) => { if (!cond) { console.error("FAIL:", msg); process.exit(1); } };
-  const base = { metrics: { coverage: 7, duplication: 2.2, lint: 483, largeFiles: 19, security: { critical: 0, high: 0 } } };
+  const base = { metrics: { coverage: 7, duplication: 2.2, lint: 483, largeFiles: 19, complexity: 12, dependencies: 3, security: { critical: 0, high: 0 } } };
 
   // (a) coverage drops → regression
   let r = compare(base, { metrics: { ...base.metrics, coverage: 6 } });
@@ -246,6 +287,19 @@ function selftest() {
   // (e) absent metric never counts as regression or improvement
   r = compare(base, { metrics: { ...base.metrics, coverage: null } });
   assert(!r.regressions.some((x) => x.key === "coverage"), "absent metric must not regress");
+
+  // (f) complexity rise → regression; dependencies rise → regression
+  r = compare(base, { metrics: { ...base.metrics, complexity: 15 } });
+  assert(r.regressions.some((x) => x.key === "complexity"), "complexity rise must regress");
+  r = compare(base, { metrics: { ...base.metrics, dependencies: 5 } });
+  assert(r.regressions.some((x) => x.key === "dependencies"), "circular deps rise must regress");
+
+  // (g) complexity parsing: eslint json counts only the `complexity` rule
+  const eslintJson = JSON.stringify([
+    { messages: [{ ruleId: "complexity" }, { ruleId: "no-unused-vars" }, { ruleId: "complexity" }] },
+    { messages: [{ ruleId: "complexity" }] },
+  ]);
+  assert(countComplexity(eslintJson, ".json", "complexity") === 3, "must count only complexity-rule messages");
 
   console.log("selftest OK");
 }

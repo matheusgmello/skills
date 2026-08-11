@@ -16,18 +16,24 @@ The ratchet method is stack-agnostic — the comparator only reads numbers. What
     "duplication": 2.2,
     "lint": 483,
     "largeFiles": 19,
+    "complexity": 12,
+    "dependencies": 3,
     "security": { "critical": 0, "high": 0 }
   }
 }
 ```
 
-Directions are fixed in the script, not the file: `coverage` higher-is-better; `duplication`, `lint`, `largeFiles` lower-is-better; `security.critical` blocks, `security.high` warns. A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
+Directions are fixed in the script, not the file: `coverage` higher-is-better; `duplication`, `lint`, `largeFiles`, `complexity`, `dependencies` lower-is-better; `security.critical` blocks, `security.high` warns. `complexity` is the count of functions over the cyclomatic limit; `dependencies` is the count of circular dependency cycles. A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
 
 ---
 
 ## 2. Collection per stack
 
-The script collects `duplication` (jscpd) and `largeFiles` (line count) itself. For `coverage`, `lint`, and `security` it reads a report file whose path you set in `reports.*`. Generate those reports before running `collect`.
+The script collects `duplication` (jscpd), `largeFiles` (line count), and `dependencies` (madge) itself. For `coverage`, `lint`, `complexity`, and `security` it reads a report file whose path you set in `reports.*`. Generate those reports before running `collect`.
+
+`complexity` reuses the **lint report** — turn the cyclomatic rule on so violations land there. In eslint: `"complexity": ["warn", 10]` in your config (the script counts messages whose `ruleId` matches `complexityRule`, default `"complexity"`). In checkstyle: the `CyclomaticComplexity` module (the script counts `<error>` whose `source` mentions `Cyclomatic`).
+
+`dependencies` runs `npx madge --circular --json <root>` and counts the cycles — JS/TS only; it degrades to `null` elsewhere.
 
 ### Node
 
@@ -36,11 +42,14 @@ The script collects `duplication` (jscpd) and `largeFiles` (line count) itself. 
 npx jest --coverage --coverageReporters=json-summary
 # or vitest: npx vitest run --coverage  (coverage.reporter: ['json-summary'])
 
-# lint → reports/eslint.json  (reports.lint)
+# lint (+ complexity) → reports/eslint.json  (reports.lint)
+# enable "complexity": ["warn", 10] in eslint config so complexity violations are counted
 npx eslint . -f json -o reports/eslint.json || true   # || true: don't abort collect on lint errors
 
 # security → reports/npm-audit.json  (reports.audit)
 npm audit --json > reports/npm-audit.json || true
+
+# dependencies: collected automatically via `npx madge --circular` — no report file needed
 ```
 
 ### Java / Maven
@@ -49,7 +58,8 @@ npm audit --json > reports/npm-audit.json || true
 # coverage → jacoco CSV  (reports.coverage: "target/site/jacoco/jacoco.csv")
 mvn -B test jacoco:report
 
-# lint → checkstyle XML  (reports.lint: "target/checkstyle-result.xml")
+# lint (+ complexity) → checkstyle XML  (reports.lint: "target/checkstyle-result.xml")
+# enable the CyclomaticComplexity module in checkstyle.xml so complexity is counted
 mvn -B checkstyle:checkstyle
 ```
 
@@ -141,4 +151,4 @@ node quality-gate.mjs --selftest
 node quality-gate.mjs check --config=path/to/qualitygate.config.json
 ```
 
-`check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. Config fields: `root`, `maxFileLines`, `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.
+`check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.
