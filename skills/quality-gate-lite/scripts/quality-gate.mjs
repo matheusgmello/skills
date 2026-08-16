@@ -217,20 +217,28 @@ function collect(cfg) {
 }
 
 // --- comparison (the ratchet) ------------------------------------------------
-// Returns { regressions:[], improvements:[], warnings:[], nextBaseline:{} }.
+// Returns { regressions, improvements, warnings, nextBaseline, rows }.
+// `rows` is every active metric (base/cur/delta/status) for the summary table.
 function compare(baseline, current) {
   const b = baseline.metrics || {};
   const c = current.metrics || {};
-  const regressions = [], improvements = [], warnings = [];
+  const regressions = [], improvements = [], warnings = [], rows = [];
   const nextBaseline = { ...b };
 
   for (const [key, dir] of Object.entries(DIRECTION)) {
     const cur = c[key], base = b[key];
-    if (cur == null || base == null) continue; // absent metric never regresses or improves
-    const worse = dir === "higher_is_better" ? cur < base : cur > base;
-    const better = dir === "higher_is_better" ? cur > base : cur < base;
-    if (worse) regressions.push({ key, base, cur });
-    else if (better) { improvements.push({ key, base, cur }); nextBaseline[key] = cur; }
+    if (cur == null && base == null) continue; // metric not in play at all
+    let status = "same";
+    if (cur != null && base != null) {
+      const worse = dir === "higher_is_better" ? cur < base : cur > base;
+      const better = dir === "higher_is_better" ? cur > base : cur < base;
+      if (worse) { regressions.push({ key, base, cur }); status = "regress"; }
+      else if (better) { improvements.push({ key, base, cur }); nextBaseline[key] = cur; status = "improve"; }
+    } else {
+      status = "absent"; // one side missing — can't judge
+    }
+    const delta = (cur != null && base != null) ? round(cur - base) : null;
+    rows.push({ label: key, base, cur, delta, status });
   }
 
   // security: critical > 0 always blocks; high > 0 warns. Not ratcheted.
@@ -239,30 +247,31 @@ function compare(baseline, current) {
       regressions.push({ key: "security.critical", base: 0, cur: c.security.critical });
     if (c.security.high > 0)
       warnings.push({ key: "security.high", cur: c.security.high });
+    rows.push({ label: "security (critical)", base: 0, cur: c.security.critical, delta: c.security.critical, status: c.security.critical > 0 ? "regress" : "same" });
+    rows.push({ label: "security (high)", base: 0, cur: c.security.high, delta: c.security.high, status: c.security.high > 0 ? "warn" : "same" });
   }
-  return { regressions, improvements, warnings, nextBaseline };
+  return { regressions, improvements, warnings, nextBaseline, rows };
 }
 
-function markdownSummary({ regressions, improvements, warnings }) {
-  const arrow = (r) => `\`${r.base}\` → \`${r.cur}\``;
-  let md = "## Quality Gate\n\n";
-  if (regressions.length) {
-    md += "### ❌ Regressions (blocking)\n\n";
-    for (const r of regressions) md += `- **${r.key}**: ${arrow(r)}\n`;
-    md += "\n";
-  } else {
-    md += "### ✅ No regressions\n\n";
-  }
-  if (warnings.length) {
-    md += "### ⚠️ Warnings\n\n";
-    for (const w of warnings) md += `- **${w.key}**: ${w.cur}\n`;
-    md += "\n";
-  }
-  if (improvements.length) {
-    md += "### 🎉 Improvements (ratchet advances on merge)\n\n";
-    for (const i of improvements) md += `- **${i.key}**: ${arrow(i)}\n`;
-    md += "\n";
-  }
+function markdownSummary({ regressions, improvements, warnings, rows }) {
+  const ICON = { regress: "❌", improve: "✅", same: "➖", warn: "⚠️", absent: "·" };
+  const fmt = (v) => (v == null ? "—" : String(v));
+  const fmtDelta = (r) => {
+    if (r.delta == null) return "—";
+    if (r.delta === 0) return "±0";
+    return (r.delta > 0 ? "+" : "") + r.delta;
+  };
+
+  const n = regressions.length;
+  const title = n ? `❌ ${n} regression${n > 1 ? "s" : ""} — blocking` : "✅ No regressions";
+  let md = `## Quality Gate — ${title}\n\n`;
+  md += "| Metric | Baseline | Current | Δ | |\n|---|---:|---:|---:|:-:|\n";
+  for (const r of rows)
+    md += `| ${r.label} | ${fmt(r.base)} | ${fmt(r.cur)} | ${fmtDelta(r)} | ${ICON[r.status] || ""} |\n`;
+
+  const improved = improvements.length;
+  if (improved) md += `\n_🎉 ${improved} metric${improved > 1 ? "s" : ""} improved — ratchet advances on merge._\n`;
+  if (warnings.length) md += `\n> ⚠️ ${warnings.map((w) => `${w.key}: ${w.cur}`).join(", ")} (warning, not blocking)\n`;
   return md;
 }
 
@@ -347,6 +356,14 @@ function selftest() {
   assert(mutationScoreStryker(stryker) === 66.67, "stryker score = detected/valid*100");
   const pit = `<mutations><mutation detected='true' status='KILLED'/><mutation detected='false' status='SURVIVED'/></mutations>`;
   assert(mutationScorePitest(pit) === 50, "pitest score = detected/total*100");
+
+  // (j) summary table: every metric is a row with a signed delta
+  r = compare(base, { metrics: { ...base.metrics, coverage: 12, duplication: 3.0 } });
+  const md = markdownSummary(r);
+  assert(md.includes("| coverage | 7 | 12 | +5 |"), "coverage row shows signed positive delta");
+  assert(md.includes("| duplication | 2.2 | 3 | +0.8 |"), "duplication row shows delta");
+  assert(md.includes("Baseline | Current | Δ"), "table has Baseline/Current/Δ header");
+  assert(r.rows.length >= 6, "rows cover all active metrics, not just changed ones");
 
   console.log("selftest OK");
 }

@@ -195,4 +195,17 @@ node quality-gate.mjs --selftest
 node quality-gate.mjs check --config=path/to/qualitygate.config.json
 ```
 
-`check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit,mutation}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.
+`check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. It renders every active metric as a row with baseline, current, signed delta, and a status icon (❌ regressed / ✅ improved / ➖ unchanged / ⚠️ warning):
+
+```md
+## Quality Gate — ❌ 1 regression — blocking
+
+| Metric | Baseline | Current | Δ | |
+|---|---:|---:|---:|:-:|
+| coverage | 7.16 | 10.42 | +3.26 | ✅ |
+| duplication | 2.2 | 2.04 | -0.16 | ✅ |
+| dependencies | 3 | 4 | +1 | ❌ |
+| security (high) | 0 | 2 | +2 | ⚠️ |
+```
+
+Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit,mutation}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.
