@@ -43,4 +43,11 @@ After opening a PR, the agent drives it to green instead of waiting on a human: 
 
 Copy [scripts/qualitygate.config.example.json](scripts/qualitygate.config.example.json) to `qualitygate.config.json`, point `reports.*` at the files your stack already produces (jest/jacoco coverage, eslint/checkstyle, npm audit), set `maxFileLines`, and turn metrics on/off in `metrics`. Per-stack collection commands are in [REFERENCE.md](REFERENCE.md).
 
-**Lite vs full.** Same engine, different `metrics` list — no second script. Start with the five fundamentals in [scripts/qualitygate.lite.config.example.json](scripts/qualitygate.lite.config.example.json) (coverage, duplication, lint, large files, audit); add `complexity`, `dependencies`, and `mutation` when the project is ready. Mutation is **slow** (reruns the suite per mutant) and only meaningful once the test suite is solid — add it last.
+**Lite or full.** Pick how much runs with `--preset`:
+
+```bash
+node quality-gate.mjs collect --preset=lite   # the five fundamentals
+node quality-gate.mjs collect --preset=full   # everything (default)
+```
+
+`lite` = coverage, duplication, lint, large files, vulnerabilities — adoptable with no extra tooling. `full` adds complexity, dependencies, and mutation. Start lite on a legacy project and graduate; the `baseline.json` carries over. Mutation is **slow** (reruns the suite per mutant) and only meaningful once the test suite is solid — add it last. An explicit `metrics` list in the config always overrides the preset.

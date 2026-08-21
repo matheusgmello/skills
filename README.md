@@ -29,17 +29,16 @@ npx skills add matheusgmello/skills --skill <skill-name>
 | [write-a-skill](skills/write-a-skill/SKILL.md) | Creates new agent skills with proper structure, progressive disclosure, and bundled resources. |
 | [pentest-me](skills/pentest-me/SKILL.md) | Attacks your own system as a red team before it ships and scores each attack by how many independent layers stop it (defense in depth), then writes fix reports. Maps the HTTP attack surface from code and covers 12 vectors (IDOR, mass assignment, injection, SSRF, XSS/CSRF, path traversal, upload, XXE, and more). |
 | [quality-gate](skills/quality-gate/SKILL.md) | Sets up a ratchet quality gate — a PR may add code but never regress a metric (coverage, duplication, lint, large files, complexity, dependencies, mutation, vulns) — plus an AI babysitting loop that drives the PR to green. |
-| [quality-gate-lite](skills/quality-gate-lite/SKILL.md) | The five-metric starter version of the ratchet gate (coverage, duplication, lint, large files, vulns) for projects that don't want the heavier metrics. |
 | [brag-me](skills/brag-me/SKILL.md) | Turns your real contributions to a project into evidence-backed resume bullets, pulled from git history, merged PRs, and quality-gate metric trends. |
 | [secret-scan](skills/secret-scan/SKILL.md) | Scans the working tree (git-aware) and full git history for exposed secrets — API keys, tokens, private keys, passwords — redacts every match, and exits non-zero as a CI/pre-commit gate. |
 
 ## Quality gate — metric waves
 
-The `quality-gate` ratchet grew in waves; a project can adopt them in order as it matures. Same engine throughout — each wave is just more entries in the config's `metrics` list.
+The `quality-gate` ratchet grew in waves; a project can adopt them in order as it matures. Same engine throughout — pick how much runs with `--preset=lite|full`, or an explicit `metrics` list in the config.
 
 | Stage | Metrics | Notes |
 |---|---|---|
-| Base (`quality-gate-lite`) | coverage, duplication, lint, large files, vulnerabilities | The five fundamentals; installable on its own. |
+| Base (`--preset=lite`) | coverage, duplication, lint, large files, vulnerabilities | The five fundamentals; no extra tooling needed. |
 | Wave 1 | cyclomatic complexity, circular dependencies | Cheap, high signal; complexity reuses the lint report, dependencies via `madge`. |
 | Wave 2 | mutation score | Slow (reruns the suite per mutant) — add last, once the test suite is solid. |
 | Pass/fail (not ratcheted) | e2e, regression | Binary suites, run as separate required CI jobs — not `baseline.json` metrics. See [REFERENCE §3b](skills/quality-gate/REFERENCE.md). |
@@ -54,7 +53,7 @@ The `quality-gate` ratchet grew in waves; a project can adopt them in order as i
 
 `pentest-me` is original work — a defense-in-depth pentest method that scores attacks by layer depth rather than running a checklist scanner.
 
-`quality-gate` (and its trimmed sibling `quality-gate-lite`) implements the ratchet quality-gate and AI-babysitting method from Lucas Montano's video [Como garantir qualidade de código com IA](https://youtu.be/qToBgU8K4Ms). The concept (baseline + no-regression ratchet + babysitting) is his; the packaged script, per-stack recipes, and CI workflow are this repo's implementation.
+`quality-gate` implements the ratchet quality-gate and AI-babysitting method from Lucas Montano's video [Como garantir qualidade de código com IA](https://youtu.be/qToBgU8K4Ms). The concept (baseline + no-regression ratchet + babysitting) is his; the packaged script, per-stack recipes, and CI workflow are this repo's implementation.
 
 `brag-me` is original work — the automation is this repo's. The underlying "brag document" idea is Julia Evans' ([jvns.ca/blog/brag-documents](https://jvns.ca/blog/brag-documents/)).
 

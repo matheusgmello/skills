@@ -9,6 +9,10 @@
 //   update    rewrite baseline.json with the improved values (run on merge to main)
 //   --selftest run inline asserts and exit
 //
+//   --preset=lite|full  pick which metrics run without editing the config:
+//                       lite = the five fundamentals, full = everything.
+//                       An explicit `metrics` list in the config always wins.
+//
 // Config: qualitygate.config.json (see qualitygate.config.example.json).
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -26,6 +30,14 @@ const DIRECTION = {
   complexity: "lower_is_better",   // functions over the cyclomatic limit
   dependencies: "lower_is_better", // circular dependency count
   mutation: "higher_is_better",    // mutation score % (killed mutants)
+};
+
+// --- presets -----------------------------------------------------------------
+// lite = the five fundamentals a project can adopt without extra tooling.
+// full = everything, including the slower/heavier metrics.
+const PRESETS = {
+  lite: ["coverage", "duplication", "lint", "largeFiles", "security"],
+  full: [...Object.keys(DIRECTION), "security"],
 };
 
 // --- helpers -----------------------------------------------------------------
@@ -197,9 +209,22 @@ function collectSecurity(cfg) {
   return { critical: v.critical || 0, high: v.high || 0 };
 }
 
-function collect(cfg) {
+// Which metrics run: explicit config list > --preset > full.
+export function activeMetrics(cfg, preset) {
+  if (cfg.metrics) return cfg.metrics;
+  if (preset) {
+    if (!PRESETS[preset]) {
+      console.error(`unknown preset: ${preset} (use lite or full)`);
+      process.exit(2);
+    }
+    return PRESETS[preset];
+  }
+  return PRESETS.full;
+}
+
+function collect(cfg, preset) {
   const metrics = {};
-  const active = cfg.metrics || Object.keys(DIRECTION).concat("security");
+  const active = activeMetrics(cfg, preset);
   if (active.includes("coverage")) metrics.coverage = collectCoverage(cfg);
   if (active.includes("duplication")) metrics.duplication = collectDuplication(cfg);
   if (active.includes("lint")) metrics.lint = collectLint(cfg);
@@ -271,18 +296,18 @@ function markdownSummary({ regressions, improvements, warnings, rows }) {
 }
 
 // --- commands ----------------------------------------------------------------
-function cmdCollect(cfg, out = "metrics.json") {
-  const m = collect(cfg);
+function cmdCollect(cfg, preset, out = "metrics.json") {
+  const m = collect(cfg, preset);
   writeJSON(out, m);
   console.log(`wrote ${out}`);
 }
 
-function cmdCheck(cfg, baselinePath = "baseline.json", metricsPath = "metrics.json") {
+function cmdCheck(cfg, preset, baselinePath = "baseline.json", metricsPath = "metrics.json") {
   if (!existsSync(baselinePath)) {
     console.error(`no ${baselinePath} — run \`collect\` then commit it as the baseline first`);
     process.exit(2);
   }
-  const metrics = existsSync(metricsPath) ? readJSON(metricsPath) : collect(cfg);
+  const metrics = existsSync(metricsPath) ? readJSON(metricsPath) : collect(cfg, preset);
   const result = compare(readJSON(baselinePath), metrics);
   const md = markdownSummary(result);
   console.log(md);
@@ -291,8 +316,8 @@ function cmdCheck(cfg, baselinePath = "baseline.json", metricsPath = "metrics.js
   if (result.regressions.length) process.exit(1);
 }
 
-function cmdUpdate(cfg, baselinePath = "baseline.json", metricsPath = "metrics.json") {
-  const metrics = existsSync(metricsPath) ? readJSON(metricsPath) : collect(cfg);
+function cmdUpdate(cfg, preset, baselinePath = "baseline.json", metricsPath = "metrics.json") {
+  const metrics = existsSync(metricsPath) ? readJSON(metricsPath) : collect(cfg, preset);
   const base = existsSync(baselinePath)
     ? readJSON(baselinePath)
     : { metrics: {} };
@@ -360,6 +385,14 @@ function selftest() {
   assert(md.includes("Baseline | Current | Δ"), "table has Baseline/Current/Δ header");
   assert(r.rows.length >= 6, "rows cover all active metrics, not just changed ones");
 
+  // (k) presets: lite is the five fundamentals, full is everything, config wins
+  const lite = activeMetrics({}, "lite");
+  assert(lite.length === 5 && !lite.includes("mutation") && lite.includes("coverage"), "lite = five fundamentals, no mutation");
+  const full = activeMetrics({}, "full");
+  assert(full.includes("mutation") && full.includes("complexity") && full.includes("security"), "full includes the heavy metrics");
+  assert(activeMetrics({}, undefined).length === full.length, "no preset defaults to full");
+  assert(activeMetrics({ metrics: ["lint"] }, "full")[0] === "lint", "explicit config metrics override the preset");
+
   console.log("selftest OK");
 }
 
@@ -367,12 +400,13 @@ function selftest() {
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv.includes("--selftest")) { selftest(); process.exit(0); }
 const cfgPath = rest.find((a) => a.startsWith("--config="))?.split("=")[1] || "qualitygate.config.json";
+const preset = rest.find((a) => a.startsWith("--preset="))?.split("=")[1];
 
 switch (cmd) {
-  case "collect": cmdCollect(loadConfig(cfgPath)); break;
-  case "check": cmdCheck(loadConfig(cfgPath)); break;
-  case "update": cmdUpdate(loadConfig(cfgPath)); break;
+  case "collect": cmdCollect(loadConfig(cfgPath), preset); break;
+  case "check": cmdCheck(loadConfig(cfgPath), preset); break;
+  case "update": cmdUpdate(loadConfig(cfgPath), preset); break;
   default:
-    console.error("usage: quality-gate.mjs <collect|check|update> [--config=path] | --selftest");
+    console.error("usage: quality-gate.mjs <collect|check|update> [--config=path] [--preset=lite|full] | --selftest");
     process.exit(2);
 }

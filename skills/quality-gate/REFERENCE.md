@@ -26,7 +26,7 @@ The ratchet method is stack-agnostic — the comparator only reads numbers. What
 
 Directions are fixed in the script, not the file: `coverage` and `mutation` higher-is-better; `duplication`, `lint`, `largeFiles`, `complexity`, `dependencies` lower-is-better; `security.critical` blocks, `security.high` warns. `complexity` is the count of functions over the cyclomatic limit; `dependencies` is the count of circular dependency cycles; `mutation` is the mutation score % (killed / valid mutants). A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
 
-**Lite vs full.** The engine is one script; the `metrics` list decides what runs. `qualitygate.lite.config.example.json` enables the five fundamentals (coverage, duplication, lint, largeFiles, security). Add `complexity`, `dependencies`, `mutation` as the project matures — mutation last (it's slow and only meaningful with a solid suite).
+**Lite or full.** One engine; how much runs is a choice. `--preset=lite` enables the five fundamentals (coverage, duplication, lint, largeFiles, security); `--preset=full` (the default) adds complexity, dependencies, and mutation. `qualitygate.lite.config.example.json` is the same lite set as a committed config. Resolution order: an explicit `metrics` list in the config > `--preset` > full. Start lite on a legacy project, graduate as it matures — mutation last (slow, and only meaningful with a solid suite).
 
 ---
 
@@ -193,6 +193,7 @@ node quality-gate.mjs check     # compare vs baseline.json → summary + exit 1 
 node quality-gate.mjs update    # advance baseline.json to improved values
 node quality-gate.mjs --selftest
 node quality-gate.mjs check --config=path/to/qualitygate.config.json
+node quality-gate.mjs collect --preset=lite   # five fundamentals; --preset=full is the default
 ```
 
 `check` writes the Markdown summary to `summaryFile` (default `quality-gate-summary.md`) — feed it to `$GITHUB_STEP_SUMMARY` or read it as the agent. It renders every active metric as a row with baseline, current, signed delta, and a status icon (❌ regressed / ✅ improved / ➖ unchanged / ⚠️ warning):
