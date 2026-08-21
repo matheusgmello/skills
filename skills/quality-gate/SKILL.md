@@ -29,9 +29,12 @@ Script + config: [scripts/quality-gate.mjs](scripts/quality-gate.mjs). Recipes, 
 | Cyclomatic complexity (functions over limit) | count rises | yes |
 | Circular dependencies | count rises | yes |
 | Mutation score (killed mutants %) | drops | yes |
+| Benchmark (per named bench) | slows beyond the tolerance band | yes |
 | Vulnerabilities (`npm audit`) | any `critical` | critical blocks, high warns |
 
 A metric with no report is recorded as `null` — it never counts as an improvement, so you cannot game the ratchet by hiding a signal.
+
+**Benchmark is the one tolerant metric** — CI timing is noisy, so it's judged by percent change against a symmetric band (default ±10%), which also keeps a lucky-fast run from ratcheting the baseline. See [REFERENCE.md](REFERENCE.md).
 
 E2E and regression tests aren't metrics — they pass or fail. They run as separate required CI jobs, not in the baseline; see [REFERENCE.md](REFERENCE.md) §3b.
 
@@ -50,4 +53,4 @@ node quality-gate.mjs collect --preset=lite   # the five fundamentals
 node quality-gate.mjs collect --preset=full   # everything (default)
 ```
 
-`lite` = coverage, duplication, lint, large files, vulnerabilities — adoptable with no extra tooling. `full` adds complexity, dependencies, and mutation. Start lite on a legacy project and graduate; the `baseline.json` carries over. Mutation is **slow** (reruns the suite per mutant) and only meaningful once the test suite is solid — add it last. An explicit `metrics` list in the config always overrides the preset.
+`lite` = coverage, duplication, lint, large files, vulnerabilities — adoptable with no extra tooling. `full` adds complexity, dependencies, mutation, and benchmarks. Start lite on a legacy project and graduate; the `baseline.json` carries over. Mutation and benchmarks are slow — give them their own CI job and add them last. An explicit `metrics` list in the config always overrides the preset.

@@ -37,13 +37,16 @@ const DIRECTION = {
 // full = everything, including the slower/heavier metrics.
 const PRESETS = {
   lite: ["coverage", "duplication", "lint", "largeFiles", "security"],
-  full: [...Object.keys(DIRECTION), "security"],
+  full: [...Object.keys(DIRECTION), "security", "benchmark"],
 };
 
 // --- helpers -----------------------------------------------------------------
 const readJSON = (p) => JSON.parse(readFileSync(p, "utf8"));
 const writeJSON = (p, o) => writeFileSync(p, JSON.stringify(o, null, 2) + "\n");
 const round = (n) => Math.round(n * 100) / 100;
+// Significant digits, not decimals: a benchmark mean can be 0.0012 ms, which
+// round() would flatten to 0.
+const sig = (n, digits = 4) => Number(Number(n).toPrecision(digits));
 
 function loadConfig(path = "qualitygate.config.json") {
   if (!existsSync(path)) {
@@ -200,6 +203,44 @@ function collectMutation(cfg) {
   return null;
 }
 
+// benchmark: {name: value} from a bench report. Pure so --selftest covers it.
+// Understands JMH, vitest bench, tinybench, and a plain {name: number} object.
+// Values are time-per-op (lower is better) unless benchmarkHigherIsBetter is set.
+export function parseBenchmarks(json) {
+  const out = {};
+  const add = (name, value) => {
+    if (name != null && typeof value === "number" && isFinite(value)) out[String(name)] = sig(value);
+  };
+
+  // JMH (-rf json): [{ benchmark, primaryMetric: { score } }]
+  if (Array.isArray(json) && json[0]?.primaryMetric) {
+    for (const b of json) add(b.benchmark, b.primaryMetric?.score);
+    return out;
+  }
+  // vitest bench --outputJson: { files: [{ groups: [{ benchmarks: [{ name, mean }] }] }] }
+  if (json?.files) {
+    for (const f of json.files)
+      for (const g of f.groups || [])
+        for (const b of g.benchmarks || []) add(b.name, b.mean ?? b.result?.mean);
+    return out;
+  }
+  // tinybench: [{ name, mean | result.latency.mean | result.mean }]
+  if (Array.isArray(json)) {
+    for (const t of json) add(t.name, t.mean ?? t.result?.latency?.mean ?? t.result?.mean ?? t.value);
+    return out;
+  }
+  // generic: { "parseInvoice": 1.2 }
+  if (json && typeof json === "object") for (const [k, v] of Object.entries(json)) add(k, v);
+  return out;
+}
+
+function collectBenchmark(cfg) {
+  const p = cfg.reports?.benchmark;
+  if (!p || !existsSync(p)) return null;
+  const parsed = parseBenchmarks(readJSON(p));
+  return Object.keys(parsed).length ? parsed : null;
+}
+
 // security: npm audit --json → vulnerability counts by severity.
 function collectSecurity(cfg) {
   const p = cfg.reports?.audit;
@@ -232,14 +273,52 @@ function collect(cfg, preset) {
   if (active.includes("complexity")) metrics.complexity = collectComplexity(cfg);
   if (active.includes("dependencies")) metrics.dependencies = collectDependencies(cfg);
   if (active.includes("mutation")) metrics.mutation = collectMutation(cfg);
+  if (active.includes("benchmark")) metrics.benchmark = collectBenchmark(cfg);
   if (active.includes("security")) metrics.security = collectSecurity(cfg);
   return { generatedAt: new Date().toISOString(), maxFileLines: cfg.maxFileLines || 300, metrics };
+}
+
+// --- benchmark comparison (tolerant ratchet) ---------------------------------
+// CI runners are noisy: the same code varies run to run, so a strict ratchet
+// would fail PRs at random. Judge by PERCENT change against a tolerance band.
+//
+// The band is SYMMETRIC on purpose: an improvement inside it does not advance
+// the baseline either. Ratcheting to a lucky-fast run would make every ordinary
+// run afterwards look like a regression — the gate would eat itself.
+export function compareBenchmarks(base = {}, cur = {}, opts = {}) {
+  const { tolerance = 10, higherIsBetter = false, unit = "ms" } = opts;
+  const regressions = [], improvements = [], rows = [];
+  const next = { ...base };
+
+  for (const [name, value] of Object.entries(cur)) {
+    const b = base?.[name];
+    if (b == null || b === 0) {
+      // new benchmark (or unusable baseline): start tracking it, never judge it
+      next[name] = value;
+      rows.push({ label: `benchmark: ${name}`, base: b ?? null, cur: value, delta: null, deltaText: "new", status: "absent", unit });
+      continue;
+    }
+    const pct = ((value - b) / b) * 100;
+    const worsePct = higherIsBetter ? -pct : pct; // positive = worse, whichever direction
+    let status = "same";
+    if (worsePct > tolerance) {
+      regressions.push({ key: `benchmark.${name}`, base: b, cur: value });
+      status = "regress";
+    } else if (worsePct < -tolerance) {
+      improvements.push({ key: `benchmark.${name}`, base: b, cur: value });
+      next[name] = value;
+      status = "improve";
+    } // else: inside the band — noise. Baseline stays put.
+    const shown = sig(pct, 3);
+    rows.push({ label: `benchmark: ${name}`, base: b, cur: value, delta: shown, deltaText: `${shown > 0 ? "+" : ""}${shown}%`, status, unit });
+  }
+  return { regressions, improvements, next, rows };
 }
 
 // --- comparison (the ratchet) ------------------------------------------------
 // Returns { regressions, improvements, warnings, nextBaseline, rows }.
 // `rows` is every active metric (base/cur/delta/status) for the summary table.
-function compare(baseline, current) {
+function compare(baseline, current, opts = {}) {
   const b = baseline.metrics || {};
   const c = current.metrics || {};
   const regressions = [], improvements = [], warnings = [], rows = [];
@@ -270,13 +349,23 @@ function compare(baseline, current) {
     rows.push({ label: "security (critical)", base: 0, cur: c.security.critical, delta: c.security.critical, status: c.security.critical > 0 ? "regress" : "same" });
     rows.push({ label: "security (high)", base: 0, cur: c.security.high, delta: c.security.high, status: c.security.high > 0 ? "warn" : "same" });
   }
+
+  // benchmark: per-named-bench, percentage change against a tolerance band.
+  if (c.benchmark) {
+    const r = compareBenchmarks(b.benchmark, c.benchmark, opts.benchmark);
+    regressions.push(...r.regressions);
+    improvements.push(...r.improvements);
+    rows.push(...r.rows);
+    nextBaseline.benchmark = r.next;
+  }
   return { regressions, improvements, warnings, nextBaseline, rows };
 }
 
 function markdownSummary({ regressions, improvements, warnings, rows }) {
   const ICON = { regress: "❌", improve: "✅", same: "➖", warn: "⚠️", absent: "·" };
-  const fmt = (v) => (v == null ? "—" : String(v));
+  const fmt = (v, unit) => (v == null ? "—" : unit ? `${v} ${unit}` : String(v));
   const fmtDelta = (r) => {
+    if (r.deltaText) return r.deltaText;      // benchmarks report percent
     if (r.delta == null) return "—";
     if (r.delta === 0) return "±0";
     return (r.delta > 0 ? "+" : "") + r.delta;
@@ -287,7 +376,7 @@ function markdownSummary({ regressions, improvements, warnings, rows }) {
   let md = `## Quality Gate — ${title}\n\n`;
   md += "| Metric | Baseline | Current | Δ | |\n|---|---:|---:|---:|:-:|\n";
   for (const r of rows)
-    md += `| ${r.label} | ${fmt(r.base)} | ${fmt(r.cur)} | ${fmtDelta(r)} | ${ICON[r.status] || ""} |\n`;
+    md += `| ${r.label} | ${fmt(r.base, r.unit)} | ${fmt(r.cur, r.unit)} | ${fmtDelta(r)} | ${ICON[r.status] || ""} |\n`;
 
   const improved = improvements.length;
   if (improved) md += `\n_🎉 ${improved} metric${improved > 1 ? "s" : ""} improved — ratchet advances on merge._\n`;
@@ -296,6 +385,15 @@ function markdownSummary({ regressions, improvements, warnings, rows }) {
 }
 
 // --- commands ----------------------------------------------------------------
+// Comparison options drawn from config (benchmark tolerance band & direction).
+const compareOpts = (cfg) => ({
+  benchmark: {
+    tolerance: cfg.benchmarkTolerance ?? 10,
+    higherIsBetter: cfg.benchmarkHigherIsBetter === true,
+    unit: cfg.benchmarkUnit ?? "ms",
+  },
+});
+
 function cmdCollect(cfg, preset, out = "metrics.json") {
   const m = collect(cfg, preset);
   writeJSON(out, m);
@@ -308,7 +406,7 @@ function cmdCheck(cfg, preset, baselinePath = "baseline.json", metricsPath = "me
     process.exit(2);
   }
   const metrics = existsSync(metricsPath) ? readJSON(metricsPath) : collect(cfg, preset);
-  const result = compare(readJSON(baselinePath), metrics);
+  const result = compare(readJSON(baselinePath), metrics, compareOpts(cfg));
   const md = markdownSummary(result);
   console.log(md);
   const summaryFile = cfg.summaryFile || "quality-gate-summary.md";
@@ -321,7 +419,7 @@ function cmdUpdate(cfg, preset, baselinePath = "baseline.json", metricsPath = "m
   const base = existsSync(baselinePath)
     ? readJSON(baselinePath)
     : { metrics: {} };
-  const { nextBaseline } = compare(base, metrics);
+  const { nextBaseline } = compare(base, metrics, compareOpts(cfg));
   writeJSON(baselinePath, { updatedAt: new Date().toISOString(), metrics: nextBaseline });
   console.log(`ratchet advanced → ${baselinePath}`);
 }
@@ -392,6 +490,38 @@ function selftest() {
   assert(full.includes("mutation") && full.includes("complexity") && full.includes("security"), "full includes the heavy metrics");
   assert(activeMetrics({}, undefined).length === full.length, "no preset defaults to full");
   assert(activeMetrics({ metrics: ["lint"] }, "full")[0] === "lint", "explicit config metrics override the preset");
+
+  // (l) benchmark tolerance band, both directions
+  const bb = { parseInvoice: 1.2, renderTable: 45, hashToken: 0.8 };
+  let bench = compareBenchmarks(bb, { parseInvoice: 1.24, renderTable: 58.5, hashToken: 0.62 });
+  assert(!bench.regressions.some((x) => x.key === "benchmark.parseInvoice"), "+3.3% is inside the band — noise, not a regression");
+  assert(bench.regressions.some((x) => x.key === "benchmark.renderTable"), "+30% must regress");
+  assert(bench.improvements.some((x) => x.key === "benchmark.hashToken"), "-22.5% must count as an improvement");
+  assert(bench.next.parseInvoice === 1.2, "in-band value must NOT advance the baseline");
+  assert(bench.next.hashToken === 0.62, "real improvement advances the baseline");
+
+  // the symmetric half: a lucky-fast run inside the band must not ratchet
+  bench = compareBenchmarks(bb, { parseInvoice: 1.14 }); // -5%, inside the band
+  assert(bench.improvements.length === 0, "-5% is noise, not an improvement");
+  assert(bench.next.parseInvoice === 1.2, "in-band speedup must not lower the baseline (would fail every later run)");
+
+  // a brand-new benchmark is tracked but never judged
+  bench = compareBenchmarks(bb, { ...bb, newBench: 9 });
+  assert(bench.regressions.length === 0 && bench.next.newBench === 9, "new benchmark is adopted, not failed");
+
+  // higher-is-better (ops/sec): more is better, so a drop regresses
+  bench = compareBenchmarks({ ops: 1000 }, { ops: 700 }, { higherIsBetter: true });
+  assert(bench.regressions.some((x) => x.key === "benchmark.ops"), "throughput drop must regress when higherIsBetter");
+
+  // (m) benchmark report parsing across tools
+  assert(parseBenchmarks([{ benchmark: "com.x.parse", primaryMetric: { score: 1.5 } }])["com.x.parse"] === 1.5, "parse JMH");
+  assert(parseBenchmarks({ files: [{ groups: [{ benchmarks: [{ name: "v", mean: 2.5 }] }] }] }).v === 2.5, "parse vitest bench");
+  assert(parseBenchmarks([{ name: "t", result: { latency: { mean: 0.0012 } } }]).t === 0.0012, "parse tinybench, sub-ms precision kept");
+  assert(parseBenchmarks({ plain: 7 }).plain === 7, "parse generic {name: number}");
+
+  // benchmark rows render a percent delta with a unit
+  const bmd = markdownSummary({ regressions: [], improvements: [], warnings: [], rows: compareBenchmarks(bb, { renderTable: 58.5 }).rows });
+  assert(bmd.includes("| benchmark: renderTable | 45 ms | 58.5 ms | +30%"), "benchmark row shows unit and percent delta");
 
   console.log("selftest OK");
 }

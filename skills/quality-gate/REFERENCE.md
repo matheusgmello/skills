@@ -19,12 +19,13 @@ The ratchet method is stack-agnostic — the comparator only reads numbers. What
     "complexity": 12,
     "dependencies": 3,
     "mutation": 60,
+    "benchmark": { "parseInvoice": 1.2, "renderTable": 45 },
     "security": { "critical": 0, "high": 0 }
   }
 }
 ```
 
-Directions are fixed in the script, not the file: `coverage` and `mutation` higher-is-better; `duplication`, `lint`, `largeFiles`, `complexity`, `dependencies` lower-is-better; `security.critical` blocks, `security.high` warns. `complexity` is the count of functions over the cyclomatic limit; `dependencies` is the count of circular dependency cycles; `mutation` is the mutation score % (killed / valid mutants). A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
+Directions are fixed in the script, not the file: `coverage` and `mutation` higher-is-better; `duplication`, `lint`, `largeFiles`, `complexity`, `dependencies` lower-is-better; `security.critical` blocks, `security.high` warns; `benchmark` is per-named-bench, lower-is-better (time per op) within a tolerance band. `complexity` is the count of functions over the cyclomatic limit; `dependencies` is the count of circular dependency cycles; `mutation` is the mutation score % (killed / valid mutants). A metric set to `null` (no report found) is skipped — never a regression, never an improvement.
 
 **Lite or full.** One engine; how much runs is a choice. `--preset=lite` enables the five fundamentals (coverage, duplication, lint, largeFiles, security); `--preset=full` (the default) adds complexity, dependencies, and mutation. `qualitygate.lite.config.example.json` is the same lite set as a committed config. Resolution order: an explicit `metrics` list in the config > `--preset` > full. Start lite on a legacy project, graduate as it matures — mutation last (slow, and only meaningful with a solid suite).
 
@@ -37,6 +38,10 @@ The script collects `duplication` (jscpd), `largeFiles` (line count), and `depen
 `complexity` reuses the **lint report** — turn the cyclomatic rule on so violations land there. In eslint: `"complexity": ["warn", 10]` in your config (the script counts messages whose `ruleId` matches `complexityRule`, default `"complexity"`). In checkstyle: the `CyclomaticComplexity` module (the script counts `<error>` whose `source` mentions `Cyclomatic`).
 
 `dependencies` runs `npx madge --circular --json <root>` and counts the cycles — JS/TS only; it degrades to `null` elsewhere.
+
+`benchmark` reads a bench report set in `reports.benchmark` and tracks **each named benchmark separately** (a single total would hide which one regressed and would shift whenever a bench is added). It understands JMH (`-rf json`), `vitest bench --outputJson`, tinybench results, and a plain `{"name": number}` object. Values are **time per op, lower is better**; if your tool reports throughput (ops/sec), set `"benchmarkHigherIsBetter": true`.
+
+Because CI timing is noisy, benchmark is judged by **percent change against a tolerance band** (`benchmarkTolerance`, default `10`) — not exactly like the other metrics. The band is symmetric: a change inside it is treated as noise in **both** directions, so an in-band speedup does not advance the baseline. That asymmetry matters — ratcheting to a lucky-fast run would make every ordinary run afterwards read as a regression and the gate would eat itself. A benchmark with no baseline entry is adopted on `update`, never failed. Run it in its **own CI job** (like mutation) so it isn't competing for CPU with the rest of the pipeline; a self-hosted/pinned runner can take the tolerance down to ~3%.
 
 `mutation` reads a mutation-testing report set in `reports.mutation`: a stryker `.json` (score = killed+timeout / killed+timeout+survived+nocoverage) or a pitest `.xml` (score = detected / total). **Run it in its own slow CI job**, not on every push — mutation reruns the suite once per mutant. Add it only when the suite is strong; a high score over weak tests is noise.
 
@@ -58,6 +63,9 @@ npm audit --json > reports/npm-audit.json || true
 
 # mutation (slow — own job) → reports/mutation/mutation.json  (reports.mutation)
 npx stryker run   # configure stryker's json reporter to reports/mutation/mutation.json
+
+# benchmark (own job) → reports/bench.json  (reports.benchmark)
+npx vitest bench --outputJson=reports/bench.json     # or a tinybench script writing its results
 ```
 
 ### Java / Maven
@@ -72,6 +80,9 @@ mvn -B checkstyle:checkstyle
 
 # mutation (slow — own job) → target/pit-reports/mutations.xml  (reports.mutation)
 mvn -B org.pitest:pitest-maven:mutationCoverage -Dpit.reportFormats=XML
+
+# benchmark (own job) → reports/bench.json  (reports.benchmark)
+mvn -B jmh:benchmark -Djmh.rf=json -Djmh.rff=reports/bench.json
 ```
 
 Point `reports.coverage` at a `.json` (jest summary) or `.csv` (jacoco); `reports.lint` at `.json` (eslint) or `.xml` (checkstyle); `reports.mutation` at a stryker `.json` or pitest `.xml`. The script auto-detects by extension. `security` is npm-audit-only; drop `"security"` from `metrics` on non-Node projects.
@@ -207,6 +218,10 @@ node quality-gate.mjs collect --preset=lite   # five fundamentals; --preset=full
 | duplication | 2.2 | 2.04 | -0.16 | ✅ |
 | dependencies | 3 | 4 | +1 | ❌ |
 | security (high) | 0 | 2 | +2 | ⚠️ |
+| benchmark: parseInvoice | 1.2 ms | 1.24 ms | +3.33% | ➖ |
+| benchmark: renderTable | 45 ms | 58.5 ms | +30% | ❌ |
 ```
 
-Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit,mutation}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.
+Benchmark rows report a **percent** delta (absolute nanoseconds aren't readable at a glance) and mark in-band noise as ➖.
+
+Config fields: `root`, `maxFileLines`, `complexityRule` (eslint rule id, default `complexity`), `benchmarkTolerance` (percent band, default `10`), `benchmarkHigherIsBetter` (set `true` for ops/sec), `benchmarkUnit` (display only, default `ms`), `metrics` (active list), `includeExt`, `exclude`, `reports.{coverage,lint,audit,mutation,benchmark}`, `summaryFile`. `--selftest` runs inline asserts (regression blocks, ratchet advances, critical blocks / high warns) and needs no config.

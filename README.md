@@ -28,7 +28,7 @@ npx skills add matheusgmello/skills --skill <skill-name>
 | [grill-while-coding](skills/grill-while-coding/SKILL.md) | Pauses mid-implementation to question business-rule or architectural decisions as they're written, keeping the user aligned with the code. |
 | [write-a-skill](skills/write-a-skill/SKILL.md) | Creates new agent skills with proper structure, progressive disclosure, and bundled resources. |
 | [pentest-me](skills/pentest-me/SKILL.md) | Attacks your own system as a red team before it ships and scores each attack by how many independent layers stop it (defense in depth), then writes fix reports. Maps the HTTP attack surface from code and covers 12 vectors (IDOR, mass assignment, injection, SSRF, XSS/CSRF, path traversal, upload, XXE, and more). |
-| [quality-gate](skills/quality-gate/SKILL.md) | Sets up a ratchet quality gate — a PR may add code but never regress a metric (coverage, duplication, lint, large files, complexity, dependencies, mutation, vulns) — plus an AI babysitting loop that drives the PR to green. |
+| [quality-gate](skills/quality-gate/SKILL.md) | Sets up a ratchet quality gate — a PR may add code but never regress a metric (coverage, duplication, lint, large files, complexity, dependencies, mutation, benchmarks, vulns) — plus an AI babysitting loop that drives the PR to green. |
 | [brag-me](skills/brag-me/SKILL.md) | Turns your real contributions to a project into evidence-backed resume bullets, pulled from git history, merged PRs, and quality-gate metric trends. |
 | [secret-scan](skills/secret-scan/SKILL.md) | Scans the working tree (git-aware) and full git history for exposed secrets — API keys, tokens, private keys, passwords — redacts every match, and exits non-zero as a CI/pre-commit gate. |
 
@@ -41,6 +41,7 @@ The `quality-gate` ratchet grew in waves; a project can adopt them in order as i
 | Base (`--preset=lite`) | coverage, duplication, lint, large files, vulnerabilities | The five fundamentals; no extra tooling needed. |
 | Wave 1 | cyclomatic complexity, circular dependencies | Cheap, high signal; complexity reuses the lint report, dependencies via `madge`. |
 | Wave 2 | mutation score | Slow (reruns the suite per mutant) — add last, once the test suite is solid. |
+| Wave 3 | microbenchmarks | Per-named-bench timing, judged against a symmetric tolerance band (default ±10%) because CI timing is noisy. Own CI job. |
 | Pass/fail (not ratcheted) | e2e, regression | Binary suites, run as separate required CI jobs — not `baseline.json` metrics. See [REFERENCE §3b](skills/quality-gate/REFERENCE.md). |
 
 ## Attribution
