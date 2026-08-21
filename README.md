@@ -40,7 +40,7 @@ The `quality-gate` ratchet grew in waves; a project can adopt them in order as i
 |---|---|---|
 | Base (`--preset=lite`) | coverage, duplication, lint, large files, vulnerabilities | The five fundamentals; no extra tooling needed. |
 | Wave 1 | cyclomatic complexity, circular dependencies | Cheap, high signal; complexity reuses the lint report, dependencies via `madge`. |
-| Wave 2 | mutation score | Slow (reruns the suite per mutant) — add last, once the test suite is solid. |
+| Wave 2 | mutation score | Slow (reruns the suite per mutant) — only meaningful once the test suite is solid. Own CI job. |
 | Wave 3 | microbenchmarks | Per-named-bench timing, judged against a symmetric tolerance band (default ±10%) because CI timing is noisy. Own CI job. |
 | Pass/fail (not ratcheted) | e2e, regression | Binary suites, run as separate required CI jobs — not `baseline.json` metrics. See [REFERENCE §3b](skills/quality-gate/REFERENCE.md). |
 
